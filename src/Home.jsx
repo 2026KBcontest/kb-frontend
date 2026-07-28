@@ -307,8 +307,10 @@ function HeroBanner() {
     // 원본 실측 : 히어로 전체가 하나의 노란 배너(x266~1503)이고
     //            '다음 분석 예정일'은 그 안에 얹힌 흰 박스임
     <div className="shrink-0 rounded-2xl bg-kb-yellowBg border border-kb-yellowSoft px-6 py-4 flex flex-col lg:flex-row lg:items-center gap-5">
-      {/* 좌 : 요약 문구 */}
-      <div className="flex-1 min-w-0">
+      {/* 좌 : 요약 문구
+          flex-1 을 주면 남는 공간을 글 블록이 전부 먹어서
+          그림이 오른쪽 흰 박스에 딱 붙어버림 → 내용 너비만 쓰게 둠 */}
+      <div className="min-w-0">
         <p className="text-[14px] font-semibold text-ink-700">현재 저축 속도라면</p>
         <p className="mt-1.5 text-[22px] lg:text-[26px] font-extrabold leading-tight">D+14개월 후 자취 가능!</p>
         <p className="mt-2 text-[14px] text-ink-500">목표 보증금 30,000,000원을 달성할 수 있어요.</p>
@@ -316,16 +318,24 @@ function HeroBanner() {
 
       {/* 집·동전 일러스트 자리 */}
       {/* ★ 아이콘 : 집·동전 일러스트 — public/assets/banner_home.png
-          배경이 투명이 아니라 크림색이라 rounded-xl 로 카드처럼 다듬음.
-          높이 기준으로 잡아야 배너가 세로로 늘어나지 않음 */}
+          배경이 투명한 그림이라 모서리 다듬기(rounded)나 잘라내기(object-cover)가 필요 없음.
+
+          -my-4 는 배너의 상하 패딩(py-4 = 16px)을 상쇄하는 음수 여백.
+          덕분에 그림은 140px 크기로 보이면서 레이아웃에는 108px 만 차지함
+          → 배너 높이를 거의 안 늘리고 그림만 키울 수 있음.
+          (py-4 보다 큰 음수값을 주면 그림이 배너 밖으로 삐져나오니 -my-4 가 상한선) */}
       <img
         src="/assets/banner_home.png"
         alt=""
-        className="hidden xl:block shrink-0 h-[96px] w-auto rounded-xl object-cover"
+        className="hidden xl:block shrink-0 h-[124px] w-auto object-contain -my-4 ml-auto xl:mr-14"
       />
 
-      {/* 우 : 배너 안에 들어가는 흰 박스 */}
-      <div className="w-full lg:w-[380px] xl:w-[420px] shrink-0 bg-white rounded-xl px-5 py-4">
+      {/* 우 : 배너 안에 들어가는 흰 박스
+          폭 34.5% 는 아래 2열 '목표 변경' 버튼의 오른쪽 끝에 왼쪽 모서리를 맞춘 값.
+            본문폭 W → 열 하나 = (W-32)/3, 버튼 오른쪽 끝은 본문 우측에서 (열+32)만큼 안쪽,
+            배너 안쪽폭은 W-48 이므로  박스폭 = (W-8)/3  →  배너 대비 약 34.5%
+          픽셀이 아니라 비율로 잡아서 화면 크기가 변해도 정렬이 유지됨 */}
+      <div className="w-full lg:w-[380px] xl:w-[34.5%] shrink-0 bg-white rounded-xl px-5 py-4">
         <p className="text-[13px] font-bold">다음 분석 예정일</p>
         <div className="mt-2.5 flex items-end justify-between gap-3">
           <p className="text-[20px] font-extrabold whitespace-nowrap">
