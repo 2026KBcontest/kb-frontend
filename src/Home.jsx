@@ -497,10 +497,11 @@ function FundStatusCard() {
 
 /* ---------- 2행 3열 위 : AI 추천 인사이트 ---------- */
 
+// 아이콘 파일은 public/assets/ 에 있음
 const SAVING_TIPS = [
-  { label: '배달/외식 줄이기', amount: '-40,000원' },
-  { label: '카페 지출 줄이기', amount: '-25,000원' },
-  { label: '구독 서비스 점검', amount: '-15,000원' },
+  { label: '배달/외식 줄이기', amount: '-40,000원', icon: '/assets/food.png' },
+  { label: '카페 지출 줄이기', amount: '-25,000원', icon: '/assets/coffee.png' },
+  { label: '구독 서비스 점검', amount: '-15,000원', icon: '/assets/subscription.png' },
 ]
 
 function AiInsightCard() {
@@ -526,7 +527,9 @@ function AiInsightCard() {
         {SAVING_TIPS.map((tip) => (
           <li key={tip.label} className="flex items-center justify-between gap-2">
             <span className="flex items-center gap-2.5 text-[13px] text-ink-700 truncate">
-              <IconBox size={20} />
+              {/* ★ 아이콘 : 절약 팁 3종 — SAVING_TIPS 배열의 icon 값 사용
+                  (배달/외식 · 카페 · 구독 서비스) */}
+              <IconBox size={22} src={tip.icon} />
               {tip.label}
             </span>
             <span className="text-[13px] font-bold text-ok shrink-0 whitespace-nowrap">{tip.amount}</span>
