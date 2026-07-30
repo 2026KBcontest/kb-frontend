@@ -6,11 +6,13 @@
    로그인 성공 시 홈화면(Home.jsx)으로 바로 넘어감.
    (이미 가입·마이데이터 연동을 끝낸 사용자라고 보기 때문)
 
-   ※ 백엔드 /api/auth/login 은 현재 목 데이터라 아무 값이나 200 을 반환함.
-     실패 응답(401)이 정의되면 아래 handleSubmit 의 주석을 풀어 연결하면 됨.
+   ※ 로그인 식별자는 이메일이 아니라 loginId (백엔드 명세 기준).
+   ※ 토큰은 응답 바디가 아니라 Authorization / Refresh-Token '헤더' 로 옴.
+     읽는 처리는 api.js 의 login() 에 모아둠.
    ============================================================ */
 
 import { useState } from 'react'
+import { login, ApiError } from './api.js'
 
 
 /* ---------- 입력값 검증 ---------- */
@@ -18,9 +20,10 @@ import { useState } from 'react'
 function validate(f) {
   const e = {}
 
-  if (!f.email.trim()) e.email = '이메일을 입력해주세요.'
-  else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email)) e.email = '이메일 형식이 올바르지 않습니다.'
-
+  /* 로그인 화면에서는 형식을 깐깐하게 검사하지 않는다.
+     기존 회원의 아이디 규칙이 나중에 바뀌었을 수도 있고,
+     '아이디 또는 비밀번호가 틀렸다' 는 판단은 서버가 하는 게 맞음 */
+  if (!f.loginId.trim()) e.loginId = '아이디를 입력해주세요.'
   if (!f.password) e.password = '비밀번호를 입력해주세요.'
 
   return e
@@ -41,12 +44,13 @@ function inputClass(hasError) {
 /* ---------- 로그인 화면 ---------- */
 
 export default function Login({ onSuccess, onGoSignup, onBack }) {
-  const [form, setForm] = useState({ email: '', password: '', keepLogin: false })
+  const [form, setForm] = useState({ loginId: '', password: '', keepLogin: false })
   const [touched, setTouched] = useState({})
   const [submitted, setSubmitted] = useState(false)
 
-  // 서버가 내려주는 실패 문구를 담을 자리 (예: 비밀번호가 일치하지 않습니다)
+  // 서버가 내려주는 실패 문구 (AUTH_003 등)
   const [serverError, setServerError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
 
   const errors = validate(form)
   const errorOf = (key) => (submitted || touched[key] ? errors[key] : undefined)
@@ -54,34 +58,34 @@ export default function Login({ onSuccess, onGoSignup, onBack }) {
   const set = (key) => (value) => setForm((prev) => ({ ...prev, [key]: value }))
   const blur = (key) => () => setTouched((prev) => ({ ...prev, [key]: true }))
 
-  function handleSubmit(ev) {
+  async function handleSubmit(ev) {
     ev.preventDefault()
     setSubmitted(true)
     setServerError('')
 
     if (Object.keys(errors).length > 0) return
 
-    /* ★ API 연동 자리 — POST /api/auth/login
-       백엔드 CORS 설정이 추가되면 아래 주석을 풀면 됨.
-       실패 응답 형식은 BACKEND_REQUEST.md 3-3 / 3-4 로 요청해둔 상태.
-
-       const res = await fetch('http://localhost:8080/api/auth/login', {
-         method: 'POST',
-         headers: { 'Content-Type': 'application/json' },
-         body: JSON.stringify({ email: form.email, password: form.password }),
-       })
-
-       if (!res.ok) {
-         const err = await res.json()
-         setServerError(err.message ?? '로그인에 실패했습니다.')
-         return
-       }
-
-       const data = await res.json()
-       // 토큰은 Authorization: Bearer <token> 으로 붙일 예정
-       // keepLogin 이 켜져 있으면 브라우저에 저장, 아니면 메모리에만 보관
-    */
-    onSuccess()
+    setSubmitting(true)
+    try {
+      /* POST /api/auth/login
+         성공하면 api.js 가 토큰을 저장해둠.
+         keepLogin 이 켜져 있으면 localStorage(브라우저를 닫아도 유지),
+         꺼져 있으면 sessionStorage(탭을 닫으면 사라짐) 에 들어감 */
+      await login({
+        loginId: form.loginId,
+        password: form.password,
+        keepLogin: form.keepLogin,
+      })
+      onSuccess()
+    } catch (err) {
+      setServerError(
+        err instanceof ApiError
+          ? err.message
+          : '로그인 중 문제가 발생했어요. 잠시 후 다시 시도해주세요.',
+      )
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -135,20 +139,20 @@ export default function Login({ onSuccess, onGoSignup, onBack }) {
               </p>
             )}
 
-            {/* 이메일 */}
+            {/* 아이디 */}
             <label className="block mt-7">
-              <span className="block mb-2 text-[14px] font-bold text-kb-brownDark">이메일</span>
+              <span className="block mb-2 text-[14px] font-bold text-kb-brownDark">아이디</span>
               <input
-                type="email"
-                value={form.email}
-                onChange={(ev) => set('email')(ev.target.value)}
-                onBlur={blur('email')}
-                placeholder="example@kb.com"
-                autoComplete="email"
-                className={inputClass(Boolean(errorOf('email')))}
+                type="text"
+                value={form.loginId}
+                onChange={(ev) => set('loginId')(ev.target.value)}
+                onBlur={blur('loginId')}
+                placeholder="testUser"
+                autoComplete="username"
+                className={inputClass(Boolean(errorOf('loginId')))}
               />
-              {errorOf('email') && (
-                <span className="block mt-1.5 text-[13px] text-danger">{errorOf('email')}</span>
+              {errorOf('loginId') && (
+                <span className="block mt-1.5 text-[13px] text-danger">{errorOf('loginId')}</span>
               )}
             </label>
 
@@ -191,9 +195,11 @@ export default function Login({ onSuccess, onGoSignup, onBack }) {
                 <span className="text-[14px] text-ink-700">로그인 상태 유지</span>
               </label>
 
-              {/* 비밀번호 찾기는 아직 화면이 없어서 자리만 둠 */}
+              {/* 비밀번호 찾기 화면·API 가 아직 없어서 안내만 띄움.
+                  onClick 이 없으면 눌러도 무반응이라 고장난 것처럼 보임 */}
               <button
                 type="button"
+                onClick={() => setServerError('비밀번호 찾기는 준비 중이에요. 팀에 문의해주세요.')}
                 className="text-[14px] text-ink-500 underline underline-offset-4 hover:text-kb-brownDark"
               >
                 비밀번호 찾기
@@ -202,10 +208,12 @@ export default function Login({ onSuccess, onGoSignup, onBack }) {
 
             <button
               type="submit"
+              disabled={submitting}
               className="mt-7 w-full h-[62px] rounded-xl bg-kb-yellow hover:bg-kb-yellowDark
+                disabled:opacity-60 disabled:cursor-not-allowed
                 text-[18px] font-bold text-kb-brownDark transition-colors"
             >
-              로그인하기
+              {submitting ? '로그인 중…' : '로그인하기'}
             </button>
 
             {/* 구분선 안에 글자를 넣음 */}

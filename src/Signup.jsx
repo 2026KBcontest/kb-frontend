@@ -9,12 +9,13 @@
    이름 / 이메일 / 비밀번호 / 비밀번호 확인 / 생년월일 /
    성별 / 직업 / 현재 거주지역 / 휴대폰 번호 / 동의 체크박스
 
-   ※ 백엔드 /api/auth/signup 은 현재 email·password·name 3개만 받음.
-     나머지 6개 필드는 BACKEND_REQUEST.md 로 추가 요청해둔 상태.
-     API 연동은 아직 붙이지 않았고, 아래 handleSubmit 에 자리만 표시해둠.
+   ※ 백엔드 POST /api/auth/signup 은 loginId·password·email·name 4개만 받음.
+     생년월일·성별·직업·거주지역·휴대폰 5개는 화면에서 받아두지만 아직 전송하지 않음.
+     (시나리오 ① 요구 항목이라 화면은 유지. 백엔드에 필드 추가 요청 후 연결 예정)
    ============================================================ */
 
 import { useState } from 'react'
+import { signup, ApiError } from './api.js'
 
 
 /* ---------- 선택 항목 값 ---------- */
@@ -62,16 +63,23 @@ function formatPhone(value) {
 function validate(f) {
   const e = {}
 
+  // 백엔드 규칙 : 영문 대소문자 4~20자 (숫자·기호 불가)
+  if (!f.loginId.trim()) e.loginId = '아이디를 입력해주세요.'
+  else if (!/^[A-Za-z]{4,20}$/.test(f.loginId)) e.loginId = '영문 4~20자로 입력해주세요.'
+
   if (!f.name.trim()) e.name = '이름을 입력해주세요.'
   else if (f.name.trim().length < 2) e.name = '이름은 2자 이상 입력해주세요.'
 
   if (!f.email.trim()) e.email = '이메일을 입력해주세요.'
   else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email)) e.email = '이메일 형식이 올바르지 않습니다.'
 
+  /* 백엔드 규칙 : 10~22자 + 특수문자 1개 이상.
+     서버보다 엄격하게 잡으면 서버는 통과하는 값을 프론트가 막아버리니 규칙을 그대로 맞춤 */
   if (!f.password) e.password = '비밀번호를 입력해주세요.'
-  else if (f.password.length < 8) e.password = '8자 이상 입력해주세요.'
-  else if (!/[a-zA-Z]/.test(f.password) || !/\d/.test(f.password)) {
-    e.password = '영문과 숫자를 함께 사용해주세요.'
+  else if (f.password.length < 10 || f.password.length > 22) {
+    e.password = '10~22자로 입력해주세요.'
+  } else if (!/[^A-Za-z0-9]/.test(f.password)) {
+    e.password = '특수문자를 1개 이상 포함해주세요.'
   }
 
   if (!f.passwordConfirm) e.passwordConfirm = '비밀번호를 한 번 더 입력해주세요.'
@@ -242,6 +250,7 @@ function Check({ checked, onChange, strong, children }) {
 /* ---------- 회원가입 화면 ---------- */
 
 const EMPTY_FORM = {
+  loginId: '',
   name: '',
   email: '',
   password: '',
@@ -263,12 +272,21 @@ export default function Signup({ onNext, onGoLogin, onBack }) {
   const [touched, setTouched] = useState({})
   const [submitted, setSubmitted] = useState(false)
 
+  // 서버가 돌려준 에러. errorCode 가 특정 필드용이면 fieldError 로, 아니면 배너로 띄움
+  const [serverError, setServerError] = useState('')
+  const [fieldError, setFieldError] = useState({})
+  const [submitting, setSubmitting] = useState(false)
+
   const errors = validate(form)
 
   // 제출을 한 번 눌렀으면 전부 보여주고, 그 전에는 blur 된 것만
-  const errorOf = (key) => (submitted || touched[key] ? errors[key] : undefined)
+  const errorOf = (key) => fieldError[key] ?? (submitted || touched[key] ? errors[key] : undefined)
 
-  const set = (key) => (value) => setForm((prev) => ({ ...prev, [key]: value }))
+  // 값을 고치면 그 필드의 서버 에러는 지움 (아이디 바꿨는데 '중복' 문구가 남아있으면 이상함)
+  const set = (key) => (value) => {
+    setForm((prev) => ({ ...prev, [key]: value }))
+    setFieldError((prev) => (key in prev ? { ...prev, [key]: undefined } : prev))
+  }
   const blur = (key) => () => setTouched((prev) => ({ ...prev, [key]: true }))
 
   // 필수 동의 2개를 한 번에 켜고 끄는 전체 동의
@@ -276,9 +294,10 @@ export default function Signup({ onNext, onGoLogin, onBack }) {
   const toggleAll = (on) =>
     setForm((prev) => ({ ...prev, agreePrivacy: on, agreeMydata: on, agreeMarketing: on }))
 
-  function handleSubmit(ev) {
+  async function handleSubmit(ev) {
     ev.preventDefault()
     setSubmitted(true)
+    setServerError('')
 
     if (Object.keys(errors).length > 0) {
       // 첫 번째 에러 필드로 스크롤을 올려줌
@@ -287,21 +306,30 @@ export default function Signup({ onNext, onGoLogin, onBack }) {
       return
     }
 
-    /* ★ API 연동 자리 — POST /api/auth/signup
-       백엔드 CORS 설정이 추가되면 아래 주석을 풀고 onNext() 를 응답 성공 시로 옮기면 됨.
-
-       const res = await fetch('http://localhost:8080/api/auth/signup', {
-         method: 'POST',
-         headers: { 'Content-Type': 'application/json' },
-         body: JSON.stringify({
-           name: form.name, email: form.email, password: form.password,
-           // 아래 6개는 백엔드에 추가 요청해둔 필드
-           birthDate: form.birthDate, gender: form.gender,
-           job: form.job, region: form.region, phone: form.phone,
-         }),
-       })
-    */
-    onNext()
+    setSubmitting(true)
+    try {
+      /* POST /api/auth/signup
+         지금 서버가 받는 건 이 4개뿐. 생년월일·성별·직업·거주지역·휴대폰은
+         화면에만 남아있고 전송되지 않음 (백엔드에 필드 추가 요청 중) */
+      await signup({
+        loginId: form.loginId,
+        password: form.password,
+        email: form.email,
+        name: form.name,
+      })
+      onNext()
+    } catch (err) {
+      if (err instanceof ApiError) {
+        // 중복 에러는 해당 입력칸 아래에 붙여주는 게 훨씬 알아보기 쉬움
+        if (err.errorCode === 'AUTH_001') setFieldError({ loginId: err.message })
+        else if (err.errorCode === 'AUTH_002') setFieldError({ email: err.message })
+        else setServerError(err.message)
+      } else {
+        setServerError('회원가입 중 문제가 발생했어요. 잠시 후 다시 시도해주세요.')
+      }
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -334,8 +362,29 @@ export default function Signup({ onNext, onGoLogin, onBack }) {
             입력하신 정보는 자취 가능 시점 예측과 맞춤 정책 추천에만 사용돼요.
           </p>
 
-          {/* 이름 / 생년월일 */}
+          {/* 특정 필드에 붙일 수 없는 서버 에러 (통신 실패, COMMON_001 등) */}
+          {serverError && (
+            <p className="mt-6 rounded-xl border border-danger/40 bg-danger/5 px-4 py-3 text-[14px] leading-[1.6] text-danger">
+              {serverError}
+            </p>
+          )}
+
+          {/* 아이디 / 이름 */}
           <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-5">
+            <div data-error={Boolean(errorOf('loginId'))}>
+              <Field label="아이디" required error={errorOf('loginId')} hint="영문 4~20자">
+                <input
+                  type="text"
+                  value={form.loginId}
+                  onChange={(ev) => set('loginId')(ev.target.value)}
+                  onBlur={blur('loginId')}
+                  placeholder="testUser"
+                  autoComplete="username"
+                  className={inputClass(Boolean(errorOf('loginId')))}
+                />
+              </Field>
+            </div>
+
             <div data-error={Boolean(errorOf('name'))}>
               <Field label="이름" required error={errorOf('name')}>
                 <input
@@ -346,6 +395,24 @@ export default function Signup({ onNext, onGoLogin, onBack }) {
                   placeholder="홍길동"
                   autoComplete="name"
                   className={inputClass(Boolean(errorOf('name')))}
+                />
+              </Field>
+            </div>
+
+          </div>
+
+          {/* 이메일 / 생년월일 */}
+          <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-5">
+            <div data-error={Boolean(errorOf('email'))}>
+              <Field label="이메일" required error={errorOf('email')}>
+                <input
+                  type="email"
+                  value={form.email}
+                  onChange={(ev) => set('email')(ev.target.value)}
+                  onBlur={blur('email')}
+                  placeholder="example@kb.com"
+                  autoComplete="email"
+                  className={inputClass(Boolean(errorOf('email')))}
                 />
               </Field>
             </div>
@@ -364,21 +431,6 @@ export default function Signup({ onNext, onGoLogin, onBack }) {
             </div>
           </div>
 
-          {/* 이메일 */}
-          <div className="mt-5" data-error={Boolean(errorOf('email'))}>
-            <Field label="이메일" required error={errorOf('email')} hint="로그인할 때 사용하는 아이디예요.">
-              <input
-                type="email"
-                value={form.email}
-                onChange={(ev) => set('email')(ev.target.value)}
-                onBlur={blur('email')}
-                placeholder="example@kb.com"
-                autoComplete="email"
-                className={inputClass(Boolean(errorOf('email')))}
-              />
-            </Field>
-          </div>
-
           {/* 비밀번호 / 비밀번호 확인 */}
           <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-5">
             <div data-error={Boolean(errorOf('password'))}>
@@ -386,7 +438,7 @@ export default function Signup({ onNext, onGoLogin, onBack }) {
                 label="비밀번호"
                 required
                 error={errorOf('password')}
-                hint="영문·숫자를 포함해 8자 이상"
+                hint="10~22자, 특수문자 1개 이상"
               >
                 <input
                   type="password"
@@ -528,10 +580,12 @@ export default function Signup({ onNext, onGoLogin, onBack }) {
           {/* 다음 버튼 — 시나리오 ① 의 'KB Yellow 다음(마이데이터 연결)' */}
           <button
             type="submit"
+            disabled={submitting}
             className="mt-8 w-full h-[62px] rounded-xl bg-kb-yellow hover:bg-kb-yellowDark
+              disabled:opacity-60 disabled:cursor-not-allowed
               text-[18px] font-bold text-kb-brownDark transition-colors"
           >
-            다음 (마이데이터 연결)
+            {submitting ? '가입 중…' : '다음 (마이데이터 연결)'}
           </button>
 
           <p className="mt-6 text-center text-[15px] text-ink-500">
