@@ -3,7 +3,8 @@
    독립만세팀 / KB AI Challenge 2026
 
    사이트에 처음 들어왔을 때 보이는 첫 화면.
-   [회원가입하기] / [로그인하기] 를 누르면 홈화면(Home.jsx)으로 넘어감.
+   [회원가입하기] → 회원가입(Signup.jsx) → 마이데이터(Mydata.jsx) → 홈(Home.jsx)
+   [로그인하기]   → 로그인(Login.jsx) → 홈(Home.jsx)
 
    [레이아웃]
    홈화면과 같은 방식 — 넓은 화면(xl, 1280px 이상)에서는 h-screen 으로 한 화면 고정.
@@ -48,7 +49,7 @@ function Header() {
 
 /* ---------- 히어로 : 헤드라인 + 미리보기 ---------- */
 
-function Hero({ onEnter }) {
+function Hero({ onSignup, onLogin }) {
   return (
         // 12열 그리드로 나누면 오른쪽이 7/12(약 57%)로 묶여서 미리보기를 크게 못 키움.
     // flex + 왼쪽 38% 고정으로 바꿔서 오른쪽이 60% 이상을 가져가게 함
@@ -70,14 +71,14 @@ function Hero({ onEnter }) {
         <div className="mt-9 flex flex-wrap gap-4">
           <button
             type="button"
-            onClick={onEnter}
+            onClick={onSignup}
             className="h-[62px] px-11 rounded-xl bg-kb-yellow hover:bg-kb-yellowDark text-[18px] font-bold text-kb-brownDark"
           >
             회원가입하기
           </button>
           <button
             type="button"
-            onClick={onEnter}
+            onClick={onLogin}
             className="h-[62px] px-11 rounded-xl border border-line bg-white hover:bg-gray-50 text-[18px] font-bold text-kb-brownDark"
           >
             로그인하기
@@ -194,12 +195,12 @@ function Points() {
 
 /* ---------- 랜딩 화면 조립 ---------- */
 
-export default function Review({ onEnter }) {
+export default function Review({ onSignup, onLogin }) {
   return (
     // xl 이상에서만 한 화면 고정. 좁은 화면에서는 잘리지 않게 스크롤 허용
     <div className="min-h-screen xl:h-screen xl:overflow-hidden flex flex-col bg-[#FAF6EF]">
       <Header />
-      <Hero onEnter={onEnter} />
+      <Hero onSignup={onSignup} onLogin={onLogin} />
       <Features />
       <Points />
     </div>
