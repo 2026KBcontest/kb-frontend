@@ -20,7 +20,7 @@
 
    테스트 계정 — 아이디 testUser / 비밀번호 abcdefg!123
    가짜 응답은 api.mock.js 에 있고, 실제 명세서와 같은 모양으로 만들어뒀음 */
-export const USE_MOCK = true
+export const USE_MOCK = false
 
 if (USE_MOCK && typeof console !== 'undefined') {
   console.warn(
