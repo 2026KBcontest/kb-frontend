@@ -31,8 +31,16 @@ if (USE_MOCK && typeof console !== 'undefined') {
 
 /* ---------- 서버 주소 ---------- */
 
-// 배포 때 주소가 바뀌므로 .env 로 뺄 수 있게 해둠 (없으면 로컬 기본값)
-export const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8080'
+/* 기본값이 빈 문자열인 이유 —
+
+   빈 값이면 '/api/auth/login' 처럼 상대 경로로 요청이 나가고,
+   vite.config.js 의 proxy 가 이를 localhost:8080 으로 전달해준다.
+   브라우저는 같은 출처로 보기 때문에 CORS 에 막히지 않고,
+   응답 헤더(Authorization / Refresh-Token)도 그대로 읽을 수 있다.
+
+   배포할 때는 .env 에 VITE_API_BASE=https://실제주소 를 넣으면 그 값을 쓴다.
+   (그때는 백엔드에 CORS 설정이 반드시 필요함) */
+export const API_BASE = import.meta.env.VITE_API_BASE ?? ''
 
 
 /* ---------- 토큰 보관 ---------- */
@@ -94,8 +102,13 @@ function updateAccessToken(token) {
 
 /* ---------- 에러 ---------- */
 
-/* 백엔드 에러 응답 형식
-   { "success": false, "errorCode": "AUTH_003", "message": "...", "timestamp": "..." } */
+/* 백엔드 에러 응답 형식이 두 갈래로 갈려 있음 (개발자 2명이 각자 만든 상태)
+
+   forecast·mydata·user 쪽 : { "success": false, "errorCode": "AUTH_003", "message": "...", "timestamp": "..." }
+   auth·policy 쪽          : { "code": "INVALID_INPUT", "message": "..." }
+
+   어느 쪽이 와도 코드를 읽을 수 있게 errorCode 와 code 를 모두 본다.
+   백엔드에서 하나로 통일되면 이 관용 처리는 지워도 됨 */
 
 const ERROR_TEXT = {
   AUTH_001: '이미 사용 중인 아이디예요.',
@@ -108,6 +121,13 @@ const ERROR_TEXT = {
   SIMULATION_002: '월 소득이 등록되지 않았어요. 소득을 먼저 입력해주세요.',
   SIMULATION_003: '사용자 정보를 찾을 수 없어요. 다시 로그인해주세요.',
   COMMON_001: '입력값을 다시 확인해주세요.',
+
+  /* auth·policy 쪽 GlobalExceptionHandler 가 쓰는 코드.
+     main 브랜치에서 401·409 핸들러가 추가되며 UNAUTHORIZED / DUPLICATE_EMAIL 이 생겼음 */
+  INVALID_INPUT: '입력값을 다시 확인해주세요.',
+  BAD_REQUEST: '요청을 처리할 수 없어요. 입력값을 확인해주세요.',
+  UNAUTHORIZED: '아이디 또는 비밀번호가 올바르지 않아요.',
+  DUPLICATE_EMAIL: '이미 가입된 이메일이에요.',
 
   // 서버에 닿지 못한 경우 (errorCode 가 없어서 프론트에서 붙이는 코드)
   NETWORK: '서버에 연결할 수 없어요. 백엔드 서버가 실행 중인지 확인해주세요.',
@@ -152,8 +172,12 @@ async function request(path, { method = 'GET', body, auth = false, raw = false, 
     throw new ApiError('NETWORK', null, 0)
   }
 
-  // access token 만료 → refresh 로 한 번만 재발급 시도 후 원래 요청 재시도
-  if (res.status === 401 && auth) {
+  /* access token 만료 → refresh 로 한 번만 재발급 시도 후 원래 요청 재시도
+
+     401 과 403 을 함께 본다. 백엔드 SecurityConfig 에 authenticationEntryPoint 가
+     지정돼 있지 않아서, 인증 실패 시 Spring Security 기본값인 403 이 내려올 수 있음.
+     401 만 보면 자동 갱신이 아예 동작하지 않는다 */
+  if ((res.status === 401 || res.status === 403) && auth) {
     const renewed = await tryReissue()
     if (renewed) {
       return request(path, { method, body, auth, raw, headers })
@@ -170,7 +194,8 @@ async function request(path, { method = 'GET', body, auth = false, raw = false, 
     } catch {
       /* 본문 없음 */
     }
-    throw new ApiError(payload.errorCode, payload.message, res.status)
+    // errorCode(forecast 계열) 와 code(auth·policy 계열) 를 모두 받아들임
+    throw new ApiError(payload.errorCode ?? payload.code, payload.message, res.status)
   }
 
   if (raw) return res
@@ -300,6 +325,30 @@ export async function syncMydata() {
   }
 
   return request('/api/mydata/sync', { method: 'POST', auth: true })
+}
+
+
+/* ---------- policy ---------- */
+
+/* POST /api/policy/recommend
+
+   응답이 단건 → 배열로 개편됨.
+   { policies: [{ policyId, policyName, description, eligibility, status, link }], aiReason }
+
+   status 는 '신청 가능' / '조건 확인 필요' 두 값만 오고, 그대로 뱃지로 표시하면 됨.
+   요청 파라미터는 region(시·도) / income(원 단위) / birthDate(YYYY-MM-DD) 3개.
+
+   ※ 이 API 는 인증이 필요 없음 (SecurityConfig 에서 /api/policy/** 는 permitAll) */
+export async function recommendPolicy({ region, income, birthDate }) {
+  if (USE_MOCK) {
+    const { mockRecommendPolicy } = await import('./api.mock.js')
+    return mockRecommendPolicy({ region, income, birthDate })
+  }
+
+  return request('/api/policy/recommend', {
+    method: 'POST',
+    body: { region, income, birthDate },
+  })
 }
 
 

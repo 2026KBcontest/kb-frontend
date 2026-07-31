@@ -133,7 +133,11 @@ function Row({ label, amount, strong }) {
       </span>
       <span
         className={`tabular-nums ${
-          strong ? 'text-[16px] font-bold text-kb-brownDark' : 'text-[14px] font-semibold text-ink-900'
+          Number(amount ?? 0) < 0
+            ? 'text-[14px] font-semibold text-danger'
+            : strong
+              ? 'text-[16px] font-bold text-kb-brownDark'
+              : 'text-[14px] font-semibold text-ink-900'
         }`}
       >
         {won(amount)}
@@ -389,7 +393,17 @@ export default function Forecast({ onNext, onBack }) {
                 {result.region} · {result.housingType === 'JEONSE' ? '전세' : '월세'} 기준
               </p>
 
-              {canPredict ? (
+              {result.estimatedMonths === 0 ? (
+                // 서버가 currentAsset >= requiredAmount 일 때 0 을 내려줌
+                <>
+                  <p className="mt-4 text-[16px] text-ink-700">필요한 자금을 이미 모았어요</p>
+                  <p className="mt-2 text-[38px] leading-[1.2] font-extrabold text-kb-brownDark">
+                    지금 바로
+                    <br />
+                    자취를 시작할 수 있어요
+                  </p>
+                </>
+              ) : canPredict ? (
                 <>
                   <p className="mt-4 text-[16px] text-ink-700">지금 저축 속도라면</p>
                   <p className="mt-2 text-[38px] leading-[1.2] font-extrabold text-kb-brownDark">
@@ -430,19 +444,30 @@ export default function Forecast({ onNext, onBack }) {
 
               <ul className="mt-5 border-t border-line pt-3">
                 <Row label="보증금" amount={result.deposit} />
-                {/* 전세는 월세가 0 으로 오므로 월세일 때만 보여줌 */}
+                {/* 전세는 월세가 0 으로 오므로 월세일 때만 보여줌.
+                    서버는 requiredAmount 에 월세 2개월분을 포함시킴 */}
                 {result.housingType === 'WOLSE' && (
-                  <Row label="월세" amount={result.monthlyRent} />
+                  <Row label="월세 2개월분" amount={result.monthlyRent * 2} />
                 )}
                 <Row label="중개보수" amount={result.brokerageFee} />
               </ul>
 
               <ul className="mt-3 border-t border-line pt-3">
-                <Row label="현재 자산" amount={result.currentAsset} />
+                {/* 서버는 (예금+적금+투자) − (대출+남은상환액) 을 내려줌.
+                    학자금 대출이 있으면 마이너스가 나오는 게 정상이라 라벨을 '순자산' 으로 씀 */}
+                <Row label="현재 순자산" amount={result.currentAsset} />
                 <Row label="월 저축 여력" amount={result.monthlySavingCapacity} strong />
               </ul>
 
-              {/* 서버가 정확한 시세를 못 찾아 평균값으로 계산한 경우 */}
+              {result.currentAsset < 0 && (
+                <p className="mt-4 text-[13px] leading-[1.6] text-ink-500">
+                  순자산은 <span className="font-bold">자산에서 부채를 뺀 금액</span>이에요. 대출이
+                  자산보다 많아 마이너스로 표시되고, 그만큼 더 모아야 해요.
+                </p>
+              )}
+
+              {/* isFallbackApplied 는 '시세 추정' 이 아니라 '저축 여력 추정' 을 뜻함.
+                  마이데이터가 없거나 (소득 − 소비) 가 음수일 때 서버가 소득의 20% 로 대체함 */}
               {result.isFallbackApplied && (
                 <p className="mt-5 flex items-start gap-2.5 rounded-xl border border-kb-yellowSoft bg-kb-yellowBg px-4 py-3 text-[13px] leading-[1.6] text-ink-700">
                   {/* ★ 아이콘 : 전구 — public/assets/light_bulb.png */}
@@ -451,8 +476,8 @@ export default function Forecast({ onNext, onBack }) {
                     alt=""
                     className="h-[18px] w-auto object-contain shrink-0 mt-px"
                   />
-                  이 지역의 상세 시세가 없어 평균값으로 계산했어요. 실제 매물 가격과 차이가 있을 수
-                  있어요.
+                  소비 내역으로 저축 여력을 계산할 수 없어 <b className="font-bold">소득의 20%</b>로
+                  추정했어요. 실제 저축 가능 금액과 차이가 있을 수 있어요.
                 </p>
               )}
             </section>

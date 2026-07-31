@@ -63,7 +63,17 @@ function formatPhone(value) {
 function validate(f) {
   const e = {}
 
-  // 백엔드 규칙 : 영문 대소문자 4~20자 (숫자·기호 불가)
+  /* 백엔드 규칙 : 영문 대소문자 4~20자 (숫자·기호 불가)
+
+     ★ 숫자 허용을 백엔드에 요청해둔 상태 (BACKEND_REQUEST_2D.md 2번).
+       서버가 바뀌면 아래 두 줄을 이렇게 교체하면 됨.
+
+       else if (!/^[A-Za-z][A-Za-z0-9]{3,19}$/.test(f.loginId))
+         e.loginId = '영문으로 시작하는 영문·숫자 4~20자로 입력해주세요.'
+
+     지금 프론트만 먼저 풀면 사용자는 숫자를 입력할 수 있는데
+     서버가 COMMON_001 로 거부해서 '왜 안 되는지 모르겠는' 상태가 된다.
+     그래서 서버 규칙과 똑같이 맞춰둠 */
   if (!f.loginId.trim()) e.loginId = '아이디를 입력해주세요.'
   else if (!/^[A-Za-z]{4,20}$/.test(f.loginId)) e.loginId = '영문 4~20자로 입력해주세요.'
 
@@ -321,8 +331,11 @@ export default function Signup({ onNext, onGoLogin, onBack }) {
     } catch (err) {
       if (err instanceof ApiError) {
         // 중복 에러는 해당 입력칸 아래에 붙여주는 게 훨씬 알아보기 쉬움
+        // 백엔드 에러 코드 체계가 두 벌이라 양쪽 값을 모두 본다
         if (err.errorCode === 'AUTH_001') setFieldError({ loginId: err.message })
-        else if (err.errorCode === 'AUTH_002') setFieldError({ email: err.message })
+        else if (err.errorCode === 'AUTH_002' || err.errorCode === 'DUPLICATE_EMAIL') {
+          setFieldError({ email: err.message })
+        }
         else setServerError(err.message)
       } else {
         setServerError('회원가입 중 문제가 발생했어요. 잠시 후 다시 시도해주세요.')
