@@ -19,6 +19,8 @@
 
 import { useState } from 'react'
 import { updateIncome, syncMydata, ApiError } from './api.js'
+// saveIncome 은 이 파일의 폼 제출 함수와 이름이 겹쳐서 별칭으로 가져옴
+import { saveMydata, saveIncome as rememberIncome } from './store.js'
 
 
 /* ---------- 진행 단계 (Signup.jsx 와 같은 배열) ---------- */
@@ -217,6 +219,7 @@ export default function Mydata({ onNext, onBack }) {
     try {
       // PATCH /api/users/me/income — 응답 바디 없음
       await updateIncome(income)
+      rememberIncome(income) // 홈화면이 꺼내 쓸 수 있게 보관 (조회 API 가 없어서)
       setIncomeSaved(true)
     } catch (err) {
       setIncomeError(
@@ -235,6 +238,7 @@ export default function Mydata({ onNext, onBack }) {
       // POST /api/mydata/sync — 요청 바디 없음. 같은 값을 다시 받는 멱등 호출
       const result = await syncMydata()
       setData(result)
+      saveMydata(result) // 홈화면이 꺼내 쓸 수 있게 보관
       setStatus((prev) => ({ ...prev, [id]: 'done' }))
     } catch (err) {
       setStatus((prev) => ({ ...prev, [id]: 'idle' }))
@@ -516,7 +520,11 @@ export default function Mydata({ onNext, onBack }) {
               </div>
             </div>
 
-            {/* AI 자동 계산 — 소득을 저장한 뒤에만 계산이 됨 */}
+            {/* 자동 계산 — 소득을 저장한 뒤에만 계산이 됨
+
+                여기는 '소득 − 지출' 뺄셈일 뿐이라 AI 가 아니다.
+                예전 라벨이 'AI 자동 계산' 이었는데, 이렇게 아무 데나 AI 를 붙이면
+                정작 진짜 AI 를 쓴 곳(정책·지역 추천, 코치 한마디)의 설득력이 같이 떨어진다. */}
             <div className="mt-8 rounded-xl border border-kb-yellowSoft bg-kb-yellowBg px-5 py-5">
               <div className="flex items-start gap-3">
                 {/* ★ 아이콘 : 전구 — public/assets/light_bulb.png */}
@@ -526,7 +534,7 @@ export default function Mydata({ onNext, onBack }) {
                   className="h-[30px] w-auto object-contain shrink-0"
                 />
                 <div className="min-w-0">
-                  <p className="text-[15px] font-bold text-kb-brownDark">AI 자동 계산</p>
+                  <p className="text-[15px] font-bold text-kb-brownDark">Tip!</p>
 
                   {income > 0 ? (
                     <>

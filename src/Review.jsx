@@ -34,6 +34,9 @@ function Icon({ src, alt = '', size = 64, className = '' }) {
 }
 
 
+import { Reveal } from './Shell.jsx'
+
+
 /* ---------- 상단 : 로고 ---------- */
 
 function Header() {
@@ -54,21 +57,26 @@ function Hero({ onSignup, onLogin }) {
         // 12열 그리드로 나누면 오른쪽이 7/12(약 57%)로 묶여서 미리보기를 크게 못 키움.
     // flex + 왼쪽 38% 고정으로 바꿔서 오른쪽이 60% 이상을 가져가게 함
     <section className="flex-1 min-h-0 w-full max-w-[1720px] mx-auto px-8 lg:px-10 flex flex-col lg:flex-row gap-4 items-center">
-      {/* 좌 : 헤드라인 */}
+      {/* 좌 : 헤드라인
+          첫 화면이라 위에서부터 순서대로 나타나게 했다. 제목 → 설명 → 버튼.
+          시선이 자연스럽게 아래로 내려가면서 버튼에서 멈추도록 */}
       <div className="w-full lg:w-[32%] shrink-0">
-        <h1 className="text-[36px] xl:text-[44px] 2xl:text-[48px] font-extrabold leading-[1.25] tracking-tight text-kb-brownDark whitespace-nowrap">
+        <h1 className="kb-fade-up text-[36px] xl:text-[44px] 2xl:text-[48px] font-extrabold leading-[1.25] tracking-tight text-kb-brownDark whitespace-nowrap">
           청년 자취의 시작,
           <br />
           <span className="text-kb-yellow">AI</span>가 함께 설계해드려요
         </h1>
 
-        <p className="mt-7 text-[17px] xl:text-[18px] leading-[1.75] text-ink-500">
+        <p
+          className="kb-fade-up mt-7 text-[17px] xl:text-[18px] leading-[1.75] text-ink-500"
+          style={{ animationDelay: '200ms' }}
+        >
           지출과 저축, 자금 계획을 AI가 분석해
           <br />
           독립 시점과 맞춤 플랜을 알려드려요.
         </p>
 
-        <div className="mt-9 flex flex-wrap gap-4">
+        <div className="kb-fade-up mt-9 flex flex-wrap gap-4" style={{ animationDelay: '400ms' }}>
           <button
             type="button"
             onClick={onSignup}
@@ -93,7 +101,10 @@ function Hero({ onSignup, onLogin }) {
           → 미리보기는 flex-1 로 '남는 가로폭에 맞춰' 크기가 정해지게 하고
             (세로는 비율대로 따라옴), 마스코트만 높이 기준으로 둠.
             이러면 어떤 화면에서도 가로가 넘치지 않음. */}
-      <div className="w-full lg:flex-1 min-w-0 h-full flex items-center justify-center lg:justify-end">
+      <div
+        className="kb-fade-in w-full lg:flex-1 min-w-0 h-full flex items-center justify-center lg:justify-end"
+        style={{ animationDelay: '450ms' }}
+      >
         {/* ★ 아이콘 : 마스코트 캐릭터 */}
         <img
           src="/assets/review_ai.png"
@@ -136,8 +147,10 @@ const FEATURES = [
 function Features() {
   return (
     <section className="shrink-0 w-full max-w-[1720px] mx-auto px-8 lg:px-10 pt-5 grid grid-cols-1 md:grid-cols-3 gap-5">
-      {FEATURES.map((item) => (
-        <div key={item.title} className="rounded-2xl border border-line bg-white px-6 py-5 flex items-center gap-5">
+      {/* 카드 3장이 동시에 뜨면 어디를 볼지 모른다. 180ms 씩 차이를 둬서 왼쪽부터 읽히게 */}
+      {FEATURES.map((item, i) => (
+        <Reveal key={item.title} delay={i * 180}>
+        <div className="h-full rounded-2xl border border-line bg-white px-6 py-5 flex items-center gap-5">
           {/* ★ 아이콘 : 기능 3종 (달력 / 계산기 / 로봇) */}
           <Icon src={item.icon} size={104} />
           <div className="min-w-0">
@@ -145,6 +158,7 @@ function Features() {
             <p className="mt-2 text-[15px] leading-[1.65] text-ink-500 whitespace-pre-line">{item.desc}</p>
           </div>
         </div>
+        </Reveal>
       ))}
     </section>
   )
@@ -165,6 +179,7 @@ function Points() {
     <section className="shrink-0 w-full max-w-[1720px] mx-auto px-8 lg:px-10 py-5">
       {/* 배경(#FAF6EF)과 이 띠(#FFFAEF)는 밝기가 거의 같아서 색만으로는 구분이 안 됨.
           → 그림자로 띄워서 경계를 만듦. 색 대비 대신 '높이 차이'로 구분시키는 방식 */}
+      <Reveal>
       <div
         className="rounded-2xl bg-kb-yellowBg border border-kb-yellowSoft px-3 py-5"
         style={{ boxShadow: '0 6px 24px -8px rgba(74, 68, 59, 0.28)' }}
@@ -188,6 +203,7 @@ function Points() {
           ))}
         </ul>
       </div>
+      </Reveal>
     </section>
   )
 }

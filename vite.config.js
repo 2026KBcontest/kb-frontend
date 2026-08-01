@@ -24,6 +24,20 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
 
+  /* 빌드 결과의 파일 경로를 상대경로로 만든다.
+
+     기본값은 '/' 라서 빌드하면 이렇게 나온다.
+       <script src="/assets/index-abc.js">
+
+     '/' 는 '웹 서버의 최상위' 라는 뜻이라, dist/index.html 을 더블클릭해서
+     (file:// 로) 열면 브라우저가 C:\assets\... 를 찾는다. 당연히 없으니
+     CSS 도 JS 도 안 불러와지고, 스타일 없는 흰 화면만 뜬다.
+
+     './' 로 바꾸면 <script src="./assets/index-abc.js"> 가 되어
+     - 파일을 직접 열어도 동작하고
+     - 배포 주소가 하위 경로(example.com/kb/)여도 그대로 동작한다.       */
+  base: './',
+
   server: {
     proxy: {
       // /api 로 시작하는 요청을 백엔드로 전달

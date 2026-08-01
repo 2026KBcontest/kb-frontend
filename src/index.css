@@ -8,3 +8,60 @@ body {
 button {
   @apply transition-colors;
 }
+
+/* ============================================================
+   등장 효과
+
+   [어디에 쓰나]
+   처음 보는 화면(홍보 페이지), 방금 만들어진 결과(AI 분석·정책 조회),
+   한 번에 여러 장이 뜨는 카드 묶음(홈)에만 쓴다.
+
+   [어디에 안 쓰나]
+   회원가입·로그인 폼, 마이데이터 표처럼 '빨리 조작해야 하는 화면' 에는 쓰지 않는다.
+   입력하러 온 사람에게 애니메이션은 기다림일 뿐이다.
+
+   [원칙]
+   - 0.8초 정도로 천천히. 너무 빠르면 '깜빡' 하고 끝나 움직임이 느껴지지 않는다
+   - 아래에서 위로 16px 정도만 움직인다. 크게 움직이면 눈이 피로하다
+   - 흔들리거나 튀는 효과는 쓰지 않는다 (금융 서비스라 신뢰가 먼저다)
+   ============================================================ */
+
+@keyframes kb-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes kb-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.kb-fade-up {
+  animation: kb-fade-up 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.kb-fade-in {
+  animation: kb-fade-in 0.9s ease-out both;
+}
+
+/* 여러 장을 차례로 띄울 때 — style={{ animationDelay: '150ms' }} 로 지정 */
+
+/* 사용자가 '동작 줄이기' 를 켜두었다면 애니메이션을 끈다.
+   전정기관 질환이 있는 사람에게 화면 움직임은 어지럼증을 유발할 수 있다.
+   접근성 항목이라 빼지 않는다 */
+@media (prefers-reduced-motion: reduce) {
+  .kb-fade-up,
+  .kb-fade-in {
+    animation: none !important;
+  }
+}

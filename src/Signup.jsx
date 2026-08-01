@@ -9,13 +9,14 @@
    이름 / 이메일 / 비밀번호 / 비밀번호 확인 / 생년월일 /
    성별 / 직업 / 현재 거주지역 / 휴대폰 번호 / 동의 체크박스
 
-   ※ 백엔드 POST /api/auth/signup 은 loginId·password·email·name 4개만 받음.
-     생년월일·성별·직업·거주지역·휴대폰 5개는 화면에서 받아두지만 아직 전송하지 않음.
-     (시나리오 ① 요구 항목이라 화면은 유지. 백엔드에 필드 추가 요청 후 연결 예정)
+   ※ 백엔드 POST /api/auth/signup 이 입력 항목 전부 + 약관 동의를 받는다 (2026-08-01 개편).
+     gender·job 은 서버 enum 이라 값이 정확히 일치해야 하고,
+     phone 은 010-1234-5678 형태(하이픈 포함)만 통과한다.
    ============================================================ */
 
 import { useState } from 'react'
-import { signup, ApiError } from './api.js'
+import { signup, login, ApiError } from './api.js'
+import { saveProfile } from './store.js'
 
 
 /* ---------- 선택 항목 값 ---------- */
@@ -24,7 +25,12 @@ import { signup, ApiError } from './api.js'
 const STEPS = ['회원가입', '마이데이터 연결', '자취 목표 설정', 'AI 분석']
 
 const GENDERS = ['남성', '여성']
-const JOBS = ['학생', '취업준비생', '직장인']
+/* 서버 enum 과 정확히 같아야 한다 (Job.java : 학생 / 무직 / 직장인).
+   다른 값을 보내면 역직렬화에 실패해 400 이 온다.
+
+   ※ 사용자 입장에서는 '취업준비생' 이 자연스럽지만 서버 값이 '무직' 이라 그대로 쓴다.
+     화면 문구를 바꾸려면 서버 enum 도 같이 바꿔야 한다 (회의 안건) */
+const JOBS = ['학생', '무직', '직장인']
 
 // 백엔드 정책 추천 API 의 region 파라미터로 그대로 넘어갈 값
 const REGIONS = [
@@ -63,19 +69,13 @@ function formatPhone(value) {
 function validate(f) {
   const e = {}
 
-  /* 백엔드 규칙 : 영문 대소문자 4~20자 (숫자·기호 불가)
-
-     ★ 숫자 허용을 백엔드에 요청해둔 상태 (BACKEND_REQUEST_2D.md 2번).
-       서버가 바뀌면 아래 두 줄을 이렇게 교체하면 됨.
-
-       else if (!/^[A-Za-z][A-Za-z0-9]{3,19}$/.test(f.loginId))
-         e.loginId = '영문으로 시작하는 영문·숫자 4~20자로 입력해주세요.'
-
-     지금 프론트만 먼저 풀면 사용자는 숫자를 입력할 수 있는데
-     서버가 COMMON_001 로 거부해서 '왜 안 되는지 모르겠는' 상태가 된다.
-     그래서 서버 규칙과 똑같이 맞춰둠 */
+  /* 백엔드 규칙 : ^[a-zA-Z0-9]{4,20}$  (2026-08-01 개편으로 숫자 허용)
+     서버 정규식과 글자 하나까지 똑같이 맞춘다.
+     프론트가 더 느슨하면 서버가 400 을 주고, 더 엄격하면 될 값을 막는다 */
   if (!f.loginId.trim()) e.loginId = '아이디를 입력해주세요.'
-  else if (!/^[A-Za-z]{4,20}$/.test(f.loginId)) e.loginId = '영문 4~20자로 입력해주세요.'
+  else if (!/^[A-Za-z0-9]{4,20}$/.test(f.loginId)) {
+    e.loginId = '영문·숫자 4~20자로 입력해주세요.'
+  }
 
   if (!f.name.trim()) e.name = '이름을 입력해주세요.'
   else if (f.name.trim().length < 2) e.name = '이름은 2자 이상 입력해주세요.'
@@ -109,8 +109,10 @@ function validate(f) {
   if (!f.job) e.job = '직업을 선택해주세요.'
   if (!f.region) e.region = '거주지역을 선택해주세요.'
 
+  /* 백엔드 정규식 : ^010-\d{4}-\d{4}$
+     011·016 같은 옛 번호와 3자리 국번은 서버가 거부하므로 프론트도 같은 규칙으로 막는다 */
   if (!f.phone) e.phone = '휴대폰 번호를 입력해주세요.'
-  else if (!/^01[016789]-\d{3,4}-\d{4}$/.test(f.phone)) {
+  else if (!/^010-\d{4}-\d{4}$/.test(f.phone)) {
     e.phone = '010-1234-5678 형식으로 입력해주세요.'
   }
 
@@ -319,14 +321,46 @@ export default function Signup({ onNext, onGoLogin, onBack }) {
     setSubmitting(true)
     try {
       /* POST /api/auth/signup
-         지금 서버가 받는 건 이 4개뿐. 생년월일·성별·직업·거주지역·휴대폰은
-         화면에만 남아있고 전송되지 않음 (백엔드에 필드 추가 요청 중) */
+         2026-08-01 백엔드 개편으로 입력 항목 전부를 서버가 받는다.
+         birthDate·gender·job·residenceRegion·phone 은 필수이고,
+         약관 동의도 agreements 객체로 함께 보낸다 (동의 시각은 서버가 기록) */
       await signup({
         loginId: form.loginId,
         password: form.password,
         email: form.email,
         name: form.name,
+        birthDate: form.birthDate, // "1999-04-11" (LocalDate 로 그대로 매핑됨)
+        gender: form.gender, // 남성 | 여성
+        job: form.job, // 학생 | 무직 | 직장인
+        residenceRegion: form.region, // 서버 필드명이 residenceRegion
+        phone: form.phone, // 010-1234-5678 (하이픈 포함, 서버 정규식이 요구)
+        agreements: {
+          privacyAgreed: form.agreePrivacy,
+          mydataAgreed: form.agreeMydata,
+          marketingAgreed: form.agreeMarketing,
+        },
       })
+
+      /* 가입만으로는 로그인이 되지 않는다.
+         signup 응답은 { userId, message } 뿐이고 토큰이 없어서,
+         바로 마이데이터 화면으로 넘어가면 소득 저장 API 가 인증 실패한다.
+         그래서 방금 만든 계정으로 자동 로그인해서 토큰을 받아둔다. */
+      await login({
+        loginId: form.loginId,
+        password: form.password,
+        keepLogin: false,
+      })
+
+      /* 서버에도 저장되지만 화면에서 바로 쓰려고 한 벌 남겨둔다.
+         (GET /api/users/me 로 언제든 다시 받아올 수 있어서, 이 보관은 나중에 없애도 됨) */
+      saveProfile({
+        birthDate: form.birthDate,
+        gender: form.gender,
+        job: form.job,
+        residenceRegion: form.region,
+        phone: form.phone,
+      })
+
       onNext()
     } catch (err) {
       if (err instanceof ApiError) {
@@ -385,13 +419,13 @@ export default function Signup({ onNext, onGoLogin, onBack }) {
           {/* 아이디 / 이름 */}
           <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-5">
             <div data-error={Boolean(errorOf('loginId'))}>
-              <Field label="아이디" required error={errorOf('loginId')} hint="영문 4~20자">
+              <Field label="아이디" required error={errorOf('loginId')} hint="영문·숫자 4~20자">
                 <input
                   type="text"
                   value={form.loginId}
                   onChange={(ev) => set('loginId')(ev.target.value)}
                   onBlur={blur('loginId')}
-                  placeholder="testUser"
+                  placeholder="testUser01"
                   autoComplete="username"
                   className={inputClass(Boolean(errorOf('loginId')))}
                 />

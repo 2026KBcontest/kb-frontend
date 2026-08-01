@@ -12,7 +12,7 @@
    ============================================================ */
 
 import { useState } from 'react'
-import { login, ApiError } from './api.js'
+import { login, USE_MOCK, ApiError } from './api.js'
 
 
 /* ---------- 입력값 검증 ---------- */
@@ -43,7 +43,10 @@ function inputClass(hasError) {
 
 /* ---------- 로그인 화면 ---------- */
 
-export default function Login({ onSuccess, onGoSignup, onBack }) {
+/* notice : 로그인이 필요해서 이 화면으로 보내진 경우의 안내 문구.
+   실패(빨강)가 아니라 안내(노랑)라 색을 구분한다 — 잘못한 게 없는데 빨간 문구를 보면
+   비밀번호를 틀린 줄 알고 다시 확인하게 된다 */
+export default function Login({ onSuccess, onGoSignup, onBack, notice }) {
   const [form, setForm] = useState({ loginId: '', password: '', keepLogin: false })
   const [touched, setTouched] = useState({})
   const [submitted, setSubmitted] = useState(false)
@@ -51,6 +54,22 @@ export default function Login({ onSuccess, onGoSignup, onBack }) {
   // 서버가 내려주는 실패 문구 (AUTH_003 등)
   const [serverError, setServerError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+
+  /* 목 모드일 때만 보이는 체험 버튼.
+     배포한 링크를 심사위원이 열었을 때 아이디를 타이핑하지 않고 바로 들어가도록.
+     실제 서버에 붙는 빌드(USE_MOCK=false)에서는 이 버튼이 아예 그려지지 않는다 */
+  async function loginAsDemo() {
+    setServerError('')
+    setSubmitting(true)
+    try {
+      await login({ loginId: 'testUser', password: 'abcdefg!123', keepLogin: false })
+      onSuccess()
+    } catch (err) {
+      setServerError(err instanceof ApiError ? err.message : '체험 계정으로 들어가지 못했어요.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   const errors = validate(form)
   const errorOf = (key) => (submitted || touched[key] ? errors[key] : undefined)
@@ -131,6 +150,13 @@ export default function Login({ onSuccess, onGoSignup, onBack }) {
             <p className="mt-2 text-[15px] text-ink-500 text-center">
               자취 준비 현황을 이어서 확인해보세요.
             </p>
+
+            {/* 로그인이 필요해서 넘어온 경우 */}
+            {notice && !serverError && (
+              <p className="mt-6 rounded-xl border border-kb-yellow/45 bg-kb-yellowBg px-4 py-3 text-[14px] leading-[1.6] text-kb-brownDark">
+                {notice}
+              </p>
+            )}
 
             {/* 서버가 내려준 실패 문구 (예: 401) */}
             {serverError && (
@@ -215,6 +241,25 @@ export default function Login({ onSuccess, onGoSignup, onBack }) {
             >
               {submitting ? '로그인 중…' : '로그인하기'}
             </button>
+
+            {/* 체험하기 — 목 모드에서만 */}
+            {USE_MOCK && (
+              <>
+                <button
+                  type="button"
+                  onClick={loginAsDemo}
+                  disabled={submitting}
+                  className="mt-3 w-full h-[54px] rounded-xl border border-kb-yellow bg-white
+                    hover:bg-kb-yellowBg disabled:opacity-60 disabled:cursor-not-allowed
+                    text-[16px] font-bold text-kb-brownDark transition-colors"
+                >
+                  체험 계정으로 둘러보기
+                </button>
+                <p className="mt-2 text-[13px] text-center text-ink-500">
+                  회원가입 없이 모든 화면을 볼 수 있어요
+                </p>
+              </>
+            )}
 
             {/* 구분선 안에 글자를 넣음 */}
             <div className="mt-8 flex items-center gap-3">
