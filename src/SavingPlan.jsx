@@ -22,7 +22,14 @@ import { useEffect, useState } from 'react'
 import { Sidebar, TopBar, IconBox } from './Shell.jsx'
 import { getUser, askAi, getProducts, ApiError } from './api.js'
 import { useAppData, saveSavingGoal } from './store.js'
-import { buildGoalPlan, goalPresets, pickSaving, won, monthsText } from './analysis.js'
+import {
+  buildGoalPlan,
+  goalPresets,
+  incomeChangedSinceAnalysis,
+  pickSaving,
+  won,
+  monthsText,
+} from './analysis.js'
 import AiPick from './AiPick.jsx'
 
 const CARD = 'rounded-2xl border border-line bg-white'
@@ -85,6 +92,15 @@ export default function SavingPlan({ onNavigate, onLogout }) {
   })
 
   const presets = goalPresets(plan.capacity)
+
+  /* 분석 뒤에 소득을 고쳤으면 저축 여력이 옛 소득 기준이다.
+     프론트에서 다시 계산하지 않고 사실만 알린다 — 서버가 준 숫자와 어긋나면 안 된다 */
+  const staleIncome = incomeChangedSinceAnalysis({
+    forecast: saved.forecast,
+    mydata: saved.mydata,
+    incomeAtAnalysis: saved.incomeAtAnalysis,
+    monthlyIncome: saved.monthlyIncome,
+  })
 
   // GET /api/products 에서 적금·예금만 골라둔다
   const [savings, setSavings] = useState([])
@@ -211,7 +227,8 @@ export default function SavingPlan({ onNavigate, onLogout }) {
           <p className="mt-2 text-[14px] leading-[1.7] text-ink-500">
             {plan.capacity > 0 ? (
               <>
-                지금 소득과 지출로는 매달{' '}
+                {/* 소득을 고친 뒤라면 '지금 소득' 이라고 말하면 안 된다. 그 값이 아니다 */}
+                {staleIncome ? '분석 당시 소득과 지출로는 매달 ' : '지금 소득과 지출로는 매달 '}
                 <span className="font-bold text-ink-700">{won(plan.capacity)}</span> 까지 모을 수
                 있어요. 예상 못 한 지출을 감안해 조금 낮게 잡아도 괜찮아요.
               </>
@@ -219,6 +236,40 @@ export default function SavingPlan({ onNavigate, onLogout }) {
               '마이데이터를 연결하고 월 소득을 입력하면 모을 수 있는 금액을 계산해드려요.'
             )}
           </p>
+
+          {/* 분석 뒤에 소득이 바뀌었으면 알려준다.
+              숫자를 조용히 그대로 두면 사용자는 자기가 고친 값이 반영된 줄 안다 */}
+          {staleIncome && (
+            <div className="mt-3 rounded-xl border border-kb-yellow/60 bg-kb-yellowBg px-4 py-3.5">
+              <p className="text-[13px] leading-[1.7] text-kb-brownDark">
+                {/* 분석 당시 소득을 아는 경우와 모르는 경우의 문장이 다르다.
+                    모르면서 아는 척하면 틀린 숫자를 적게 된다 */}
+                {staleIncome.before ? (
+                  <>
+                    위 금액은 <span className="font-bold">월 소득 {won(staleIncome.before)}</span>{' '}
+                    으로 분석했을 때의 값이에요. 지금 저장된 소득은{' '}
+                    <span className="font-bold">{won(staleIncome.now)}</span> 이에요.
+                  </>
+                ) : (
+                  <>
+                    위 금액은 이전에 분석했을 때의 값이라, 지금 저장된 소득·지출과 맞지 않아요.
+                    (지금 월 소득 <span className="font-bold">{won(staleIncome.now)}</span>)
+                  </>
+                )}{' '}
+                <span className="font-bold">
+                  다시 분석하면 약 {won(staleIncome.expected)} 가 돼요.
+                </span>
+              </p>
+              <button
+                type="button"
+                onClick={() => onNavigate?.('자취 시뮬레이션')}
+                className="mt-3 h-[40px] px-4 rounded-xl bg-kb-yellow hover:bg-kb-yellowDark
+                  text-[13px] font-bold text-kb-brownDark transition-colors"
+              >
+                다시 분석하러 가기
+              </button>
+            </div>
+          )}
 
           {/* 추천값 — 빈 칸에 직접 적는 것보다 기준점을 고르는 쪽이 쉽다.
               (50%) 는 저축 여력 대비 비율. 금액만 보면 빡빡한 목표인지 알 수 없어서 붙였다.

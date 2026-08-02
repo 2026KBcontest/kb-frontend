@@ -215,7 +215,7 @@ const isoDate = (d) =>
    대출은 '모은 돈' 이 아니라 '빌린 돈' 이라 asset/net 에 섞지 않고 따로 센다.
    섞으면 카드가 '내가 다 모았다' 처럼 보인다 — 금융 화면에서 하면 안 되는 착시다.
    합쳐서 보는 값은 funded(마련한 금액) 하나로만 둔다. */
-export function buildFundStatus(data, forecast, loanAmount = 0) {
+export function buildFundStatus(data, forecast, loanAmount = 0, policySupport = null) {
   if (!data || !forecast) return null
 
   const required = num(forecast.requiredAmount)
@@ -223,7 +223,26 @@ export function buildFundStatus(data, forecast, loanAmount = 0) {
   const debt = totalDebt(data)
   const net = asset - debt
   const loan = Math.max(num(loanAmount), 0)
-  const funded = net + loan
+
+  /* 지원금도 자금원이다.
+
+     [왜 뒤늦게 넣었나]
+     자금조달 설계 화면은 대출 금액을 이렇게 잡는다.
+        대출 = 필요 금액 − 자기자본 − 지원금
+     즉 지원금만큼 대출을 이미 줄여놓는다. 그런데 홈이 지원금을 빼고
+        남은 금액 = 필요 금액 − (자기자본 + 대출)
+     로 계산하면, 두 화면이 정확히 지원금만큼 어긋난다.
+     자금조달에서는 '다 채웠다' 고 했는데 홈은 아직 모자라다고 말하게 된다.
+
+     [null 과 0 은 다르다]
+     policySupport 가 null 이면 아직 정책 화면을 안 다녀온 것이고,
+     0 이면 받을 수 있는 지원금이 없다고 확인한 것이다.
+     null 을 0 으로 뭉개면 '지원금은 없다' 를 사실로 확정한 채 계산하게 되는데,
+     하필 '더 모아야 한다' 쪽으로 틀리는 방향이라 화면이 알고 있어야 한다. */
+  const supportKnown = policySupport != null
+  const support = Math.max(num(policySupport), 0)
+
+  const funded = net + loan + support
   const remaining = Math.max(required - funded, 0)
 
   /* 마련한 돈이 어디서 왔는지 — 예금·적금·투자에 이번에 고른 대출까지 더한다.
@@ -239,6 +258,10 @@ export function buildFundStatus(data, forecast, loanAmount = 0) {
       color: item.color,
       amount: num(data[item.key]),
     })),
+    /* 지원금도 실제로 쓸 수 있는 돈이라 구성에 넣는다 (0원이면 줄을 만들지 않는다).
+       색은 적금(#FFD466)과 겹치지 않게 kb-yellowDark 를 쓴다 —
+       같은 막대 안에 같은 색이 두 번 나오면 어느 조각이 무엇인지 알 수 없다 */
+    ...(support > 0 ? [{ label: '지원금', color: '#EDAE00', amount: support }] : []),
     ...(loan > 0 ? [{ label: '대출', color: '#60584C', amount: loan }] : []),
   ]
   const sourceTotal = sources.reduce((sum, item) => sum + item.amount, 0)
@@ -255,6 +278,8 @@ export function buildFundStatus(data, forecast, loanAmount = 0) {
     debt,
     net,
     loan,
+    support,
+    supportKnown,
     funded,
     remaining,
     sourceTotal,
@@ -262,7 +287,8 @@ export function buildFundStatus(data, forecast, loanAmount = 0) {
        loanShare  대출이 메우는 몫      (도넛의 브라운 조각)
        progressWithLoan  둘을 합친 값. 100 을 넘지 않게 자른다 */
     progress: pct(net),
-    loanShare: Math.max(pct(funded) - pct(net), 0),
+    supportShare: Math.max(pct(net + support) - pct(net), 0),
+    loanShare: Math.max(pct(funded) - pct(net + support), 0),
     progressWithLoan: pct(funded),
     breakdown,
   }
@@ -357,6 +383,65 @@ export function buildInsight(data, income, forecast) {
    그래서 둘을 나눠 두고, 목표가 여력을 넘으면 얼마를 더 줄여야 하는지 알려준다.
 
    개월 수는 서버 estimatedMonths 와 같은 식(올림)을 쓴다. */
+
+/* 저축 여력을 못 구했을 때 소득의 몇 %로 잡는지.
+   서버 ForecastService.SAVING_FALLBACK_RATE 와 같은 값이어야 한다 */
+const SAVING_FALLBACK_RATE = 0.2
+
+/* 지금 값으로 저축 여력을 다시 계산한다.
+
+   서버 ForecastService 와 같은 규칙이다 — 지출 항목 10개도 같고, 소득보다 지출이 크면
+   소득의 20% 로 대신하는 것도 같다. 규칙이 같아야 "값이 다르면 입력이 바뀐 것" 이라고
+   말할 수 있다. 다르게 계산하면 늘 다른 값이 나와서 판단에 쓸 수 없다.
+
+   ★ 이 값을 화면의 저축 여력으로 쓰지는 않는다. 표시는 서버가 준 값 그대로 두고,
+     여기서 구한 값은 '어긋났는지' 를 판단하는 데만 쓴다. */
+export function expectedCapacity(mydata, income) {
+  const raw = num(income) - totalSpending(mydata)
+  return raw < 0 ? Math.floor(num(income) * SAVING_FALLBACK_RATE) : raw
+}
+
+/* 분석한 뒤에 소득(또는 지출)이 바뀌어서 저축 여력이 옛날 값인지 알려준다.
+
+   [왜 필요한가]
+   저축 여력(monthlySavingCapacity)은 분석 시점의 소득으로 서버가 계산한 값이다.
+   마이데이터 관리에서 소득만 고치면 이 값은 그대로 남아서, 화면은 옛 소득 기준
+   금액을 계속 보여준다. 숫자가 안 바뀌는 것 자체보다, 화면이 그걸 '지금 소득' 이라고
+   말하는 게 문제다. 사용자는 자기가 방금 고친 값이 반영된 줄 안다.
+
+   [두 가지 방법으로 알아낸다]
+     ① incomeAtAnalysis 가 있으면 그걸로 바로 비교한다 (2026-08-02 이후 분석분)
+     ② 없으면 지금 값으로 같은 식을 다시 돌려 저장된 값과 비교한다
+        — 그전에 분석해둔 데이터도 알아채야 해서 필요하다
+
+   여기서는 판단만 하고 고치지는 않는다. 프론트가 임의로 다시 계산해 화면에 쓰면
+   서버가 준 숫자와 어긋난다. 다시 분석하라고 안내하는 것이 맞다.
+
+   @returns 어긋났으면 { before, now, expected }, 아니면 null
+            before 는 분석 당시 소득. 알 수 없으면 null */
+export function incomeChangedSinceAnalysis({ forecast, mydata, incomeAtAnalysis, monthlyIncome }) {
+  // 마이데이터가 없으면 지출을 몰라서 다시 계산할 수 없다
+  if (!forecast || !mydata) return null
+
+  const now = num(monthlyIncome)
+  if (now <= 0) return null
+
+  const stored = num(forecast.monthlySavingCapacity)
+  if (stored <= 0) return null
+
+  const expected = expectedCapacity(mydata, now)
+  const before = num(incomeAtAnalysis)
+
+  // ① 분석 당시 소득이 남아 있는 경우
+  if (before > 0) {
+    return before === now ? null : { before, now, expected }
+  }
+
+  /* ② 옛 데이터 — 값이 다르면 입력이 바뀐 것이다.
+     1,000원 미만 차이는 서버의 소수점 절삭 정도라 보고 넘어간다. */
+  if (Math.abs(expected - stored) < 1000) return null
+  return { before: null, now, expected }
+}
 
 export function buildGoalPlan({ forecast, mydata, income, goal }) {
   const capacity = forecast?.monthlySavingCapacity ?? savingCapacity(mydata, income)

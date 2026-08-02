@@ -240,8 +240,24 @@ export function saveMydata(snapshot) {
   return next
 }
 
+/* 분석 결과 저장.
+
+   [분석에 쓴 소득을 함께 남기는 이유]
+   forecast.monthlySavingCapacity 는 '소득 − 지출' 로 서버가 계산해서 준 값이다.
+   그런데 마이데이터 관리에서 월 소득만 바꾸면 forecast 는 그대로 남는다.
+   그러면 저축 플랜 화면이 옛 소득으로 계산된 금액을 "지금 소득으로는 매달 ○○원"
+   이라며 보여준다. 실제보다 많이 모을 수 있다고 잘못 안내하는 방향이라,
+   금융 화면에서는 그냥 안 바뀌는 것보다 나쁘다.
+
+   그 어긋남을 화면이 알아채려면 분석 당시 소득을 기억해둬야 한다. */
 export function saveForecast(result) {
-  const next = { ...read(), forecast: result, analyzedAt: new Date().toISOString() }
+  const prev = read()
+  const next = {
+    ...prev,
+    forecast: result,
+    analyzedAt: new Date().toISOString(),
+    incomeAtAnalysis: prev.monthlyIncome ?? null,
+  }
   write(next)
   return next
 }

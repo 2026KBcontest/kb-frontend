@@ -515,8 +515,13 @@ export default function Policy({ onNavigate, onLogout }) {
         ) : result ? (
           policies.length > 0 ? (
             <section>
+              {/* '추천' 이라고 쓰지 않는다.
+                  이 목록은 나이·지역 조건으로 코드가 걸러낸 결과이고, AI 는 관여하지 않는다.
+                  '추천' 은 아래 AI 칸의 일이라, 두 곳에 같은 말을 쓰면 무엇을 AI 가 했는지
+                  구분되지 않는다. 오른쪽에 조건(지역·나이·소득)을 함께 적어
+                  무엇을 기준으로 걸렀는지 보이게 한다. */}
               <SectionTitle
-                title={`추천 정책 ${policies.length}건`}
+                title={`조건에 맞는 정책 ${policies.length}건`}
                 right={
                   <span className="text-[13px] text-ink-500">
                     {region} · 만 {age}세 · 월 {won(income)}

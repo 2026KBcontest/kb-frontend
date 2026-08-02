@@ -40,13 +40,126 @@ function monthlyPayment(principal, annualRatePercent, years) {
   return Math.round((principal * r) / (1 - Math.pow(1 + r, -n)))
 }
 
+/* 은행권 DSR 규제선. 등급 판정과 경고창이 같은 값을 봐야 해서 한 곳에 둔다.
+   두 군데에 40 을 적어두면 한쪽만 고쳤을 때 "위험인데 경고가 없는" 상태가 생긴다. */
+const DSR_LIMIT = 40
+
 /* DSR 등급 — 은행권 규제선(40%)이 기준.
    30% 이하를 '안전' 으로 둔 건 규제선까지 여유를 두기 위한 화면상의 구분이다. */
 function dsrGrade(percent) {
   if (percent == null) return null
   if (percent <= 30) return { label: '안전', tone: 'ok', desc: '상환 부담이 크지 않아요' }
-  if (percent <= 40) return { label: '보통', tone: 'warn', desc: '규제 한도(40%)에 가까워요' }
+  if (percent <= DSR_LIMIT)
+    return { label: '보통', tone: 'warn', desc: `규제 한도(${DSR_LIMIT}%)에 가까워요` }
   return { label: '위험', tone: 'danger', desc: '규제 한도를 넘어 대출이 어려울 수 있어요' }
+}
+
+/**
+ * DSR 이 규제선을 넘었을 때 뜨는 경고창.
+ *
+ * 왜 팝업인가 — DSR 카드는 화면 아래쪽이라 상품을 고른 순간에는 보이지 않는다.
+ * "빌릴 수 있다" 고 잘못 안내하는 건 금융 화면에서 그냥 틀린 것보다 나쁘고,
+ * 그래서 이 정보만큼은 사용자가 스크롤하지 않아도 닿아야 한다.
+ *
+ * 다만 막지는 않는다. 최종 판단은 사용자 몫이라 '이대로 두기' 를 남겨두고,
+ * 대신 무엇을 하면 되는지를 함께 적는다. 겁만 주고 길을 안 알려주면 소용이 없다.
+ */
+function DsrAlertDialog({ info, onClose, onReset }) {
+  /* ESC 로 닫기. 팝업을 열어놓고 키보드로 빠져나갈 방법이 없으면 갇힌다 */
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  if (!info) return null
+
+  return (
+    <div
+      className="fixed inset-0 z-[120] grid place-items-center px-5 bg-black/40"
+      onClick={onClose} /* 바깥을 누르면 닫힌다 */
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="dsr-alert-title"
+        onClick={(e) => e.stopPropagation()} /* 안쪽 클릭은 닫히지 않게 */
+        className="kb-fade-up w-full max-w-[420px] rounded-2xl bg-white px-6 py-6 shadow-xl
+          border border-danger/30"
+      >
+        <div className="flex items-center gap-2.5">
+          <span
+            className="shrink-0 w-[26px] h-[26px] rounded-full bg-danger/10 text-danger
+              grid place-items-center text-[15px] font-extrabold"
+            aria-hidden
+          >
+            !
+          </span>
+          <h2 id="dsr-alert-title" className="text-[17px] font-extrabold text-kb-brownDark">
+            DSR 이 규제 한도를 넘었어요
+          </h2>
+        </div>
+
+        <p className="mt-3 text-[13px] leading-[1.7] text-ink-700">
+          <span className="font-bold">{info.name}</span> 을(를) 넣으면 매달 갚아야 할 돈이 소득의{' '}
+          <span className="font-extrabold text-danger">{info.dsr}%</span> 가 돼요. 은행은 보통{' '}
+          {DSR_LIMIT}% 를 넘으면 대출을 내주지 않아서, <span className="font-bold">실제로는 이
+          계획대로 빌리지 못할 수 있어요.</span>
+        </p>
+
+        <ul className="mt-4 rounded-xl bg-gray-50 px-4 py-3 space-y-1.5">
+          <li className="flex items-center justify-between gap-3 text-[13px]">
+            <span className="text-ink-500">새로 받을 대출 상환</span>
+            <span className="font-semibold text-ink-900 tabular-nums">{won(info.newPayment)}</span>
+          </li>
+          {info.existingPayment > 0 && (
+            <li className="flex items-center justify-between gap-3 text-[13px]">
+              <span className="text-ink-500">기존 대출 상환</span>
+              <span className="font-semibold text-ink-900 tabular-nums">
+                {won(info.existingPayment)}
+              </span>
+            </li>
+          )}
+          <li className="flex items-center justify-between gap-3 pt-1.5 border-t border-line text-[13px]">
+            <span className="font-bold text-kb-brownDark">매달 나가는 돈</span>
+            <span className="font-extrabold text-danger tabular-nums">
+              {won(info.totalPayment)}
+            </span>
+          </li>
+          <li className="flex items-center justify-between gap-3 text-[12px]">
+            <span className="text-ink-500">월 소득</span>
+            <span className="text-ink-500 tabular-nums">{won(info.income)}</span>
+          </li>
+        </ul>
+
+        {/* 겁만 주지 않는다 — 실제로 누를 수 있는 선택지를 적는다 */}
+        <p className="mt-4 text-[13px] leading-[1.7] text-ink-500">
+          상환 기간이 긴 상품을 고르거나, 지원금을 먼저 확인해 빌릴 금액을 줄이면 부담이 내려가요.
+        </p>
+
+        <div className="mt-5 flex gap-2">
+          <button
+            type="button"
+            onClick={onReset}
+            className="flex-1 h-[46px] rounded-xl bg-kb-yellow hover:bg-kb-yellowDark
+              text-[14px] font-bold text-kb-brownDark transition-colors"
+          >
+            다른 상품 고를게요
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-[46px] px-4 rounded-xl border border-line bg-white hover:bg-gray-50
+              text-[13px] font-semibold text-ink-700 transition-colors"
+          >
+            이대로 두기
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 const TONE = {
@@ -159,11 +272,45 @@ export default function FundingPlan({ onNavigate, onLogout }) {
      사라져서 매번 다시 고르게 됐다. 홈의 '대출 활용 시' 칸도 같은 값을 읽는다 */
   const [product, setProduct] = useState(() => appData.fundingPlan ?? null)
 
+  // DSR 이 규제선을 넘었을 때 뜨는 경고창의 내용. null 이면 안 뜬다
+  const [dsrAlert, setDsrAlert] = useState(null)
+
   /* 화면 상태와 store 를 한 곳에서 같이 바꾼다.
      setProduct 를 직접 부르는 자리가 여러 군데라, 한쪽만 저장하면 어긋난다 */
   const chooseProduct = (next) => {
     setProduct(next)
     saveFundingPlan(next)
+
+    /* 고른 순간 그 상품 기준으로 DSR 을 확인한다.
+
+       [왜 effect 가 아니라 여기인가]
+       처음에는 dsr 값을 지켜보는 effect 로 만들었다. 그런데 화면에 들어올 때 이미 고른
+       상품이 있으면(store 복원) 진입하자마자 경고가 떠서, 그 조합을 '이미 알린 것' 으로
+       ref 에 표시해뒀다. 그 결과 같은 상품을 다시 눌러도 키가 같아 경고가 영영 안 떴다.
+       경고는 '누른 순간' 에 뜨는 게 맞으므로, 누르는 자리에서 바로 판단한다.
+       (진입하자마자 뜨지 않는 것도 자연히 해결된다 — 누르지 않았으니 부르지 않는다)
+
+       existingPayment·monthlyIncome 은 아래에서 선언되지만, 이 함수는 렌더가 끝난 뒤
+       클릭으로만 불리므로 그 시점에는 값이 들어와 있다. */
+    if (!next) return
+
+    const income = num(monthlyIncome)
+    if (income <= 0) return // 소득을 모르면 DSR 자체를 계산할 수 없다
+
+    const nextNewPayment = monthlyPayment(next.amount, next.rate, next.years)
+    const nextTotal = nextNewPayment + existingPayment
+    const nextDsr = Math.round((nextTotal / income) * 1000) / 10
+
+    if (nextDsr <= DSR_LIMIT) return
+
+    setDsrAlert({
+      name: next.name,
+      dsr: nextDsr,
+      newPayment: nextNewPayment,
+      existingPayment,
+      totalPayment: nextTotal,
+      income,
+    })
   }
 
   const required = num(forecast?.requiredAmount)
@@ -733,9 +880,19 @@ export default function FundingPlan({ onNavigate, onLogout }) {
             </div>
           </div>
         </section>
-        
+
 
       </main>
+
+      {/* DSR 이 규제선을 넘은 순간 뜨는 경고창 */}
+      <DsrAlertDialog
+        info={dsrAlert}
+        onClose={() => setDsrAlert(null)}
+        onReset={() => {
+          chooseProduct(null) // 고른 상품을 풀고 목록에서 다시 고르게 한다
+          setDsrAlert(null)
+        }}
+      />
     </div>
   )
 }

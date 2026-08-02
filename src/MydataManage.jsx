@@ -251,7 +251,9 @@ export default function MydataManage({ onNavigate, onLogout }) {
     try {
       await updateIncome(income)
       rememberIncome(income)
-      setIncomeMsg('저장했어요. 다음 분석부터 반영돼요.')
+      /* 무엇이 아직 안 바뀌는지까지 적는다. '다음 분석부터' 만으로는
+         저축 여력·자취 시점이 옛 소득 기준으로 남아 있다는 걸 알 수 없다 */
+      setIncomeMsg('저장했어요. 저축 여력과 자취 시점은 다시 분석해야 반영돼요.')
     } catch (err) {
       setIncomeError(
         err instanceof ApiError ? err.message : '저장에 실패했어요. 다시 시도해주세요.',

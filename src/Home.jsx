@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Sidebar, TopBar, IconBox, ErrorBoundary, useComingSoon } from './Shell.jsx'
+import { Sidebar, TopBar, IconBox, ErrorBoundary } from './Shell.jsx'
 import { getUser, getRegionOptions } from './api.js'
 import { useAppData, saveRegionOptions } from './store.js'
 import {
@@ -118,30 +118,52 @@ function Card({ title, hint, more, onMore, children }) {
 }
 
 // 도넛 차트
-/* value 는 '내 돈' 몫, loanValue 는 그 뒤에 이어 붙는 '대출' 몫 (둘 다 0~100).
-   한 조각으로 합쳐 그리면 100% 가 됐을 때 다 모은 것처럼 보여서 색을 나눈다.
-   자금조달 설계 화면의 도넛과 같은 색 규칙 (노랑 = 내 돈, 브라운 = 빌린 돈) */
-function Donut({ value, loanValue = 0, size = 148, thickness = 20 }) {
+/* 세 조각을 이어 붙인다 (전부 0~100).
+     value        내 돈
+     supportValue 지원금
+     loanValue    대출
+
+   한 조각으로 합쳐 그리면 100% 가 됐을 때 전부 내 돈으로 모은 것처럼 보여서 색을 나눈다.
+   자금조달 설계 화면의 도넛과 같은 색 규칙 (노랑 = 내 돈, 연노랑 = 지원금, 브라운 = 빌린 돈)
+
+   ★ 조각을 하나라도 빠뜨리면 그 몫이 '앞으로 모아야 할 금액' 자리인 회색으로 남는다.
+     실제로 지원금 조각이 없던 동안, 다 채운 상태인데도 회색이 남고 가운데 숫자가
+     84% 로 보였다. 새 자금원을 추가하면 여기에도 조각을 더해야 한다. */
+function Donut({ value, supportValue = 0, loanValue = 0, size = 148, thickness = 20 }) {
   const r = (size - thickness) / 2
   const circumference = 2 * Math.PI * r
-  const filled = (value / 100) * circumference
-  const loanFilled = (loanValue / 100) * circumference
+  const arc = (percent) => (percent / 100) * circumference
+
+  const filled = arc(value)
+  const supportFilled = arc(supportValue)
+  const loanFilled = arc(loanValue)
+
+  // 뒤 조각은 앞 조각들이 차지한 만큼 밀어서 시작한다
+  const segments = [
+    { length: supportFilled, offset: filled, color: '#EDAE00' },
+    { length: loanFilled, offset: filled + supportFilled, color: '#60584C' },
+  ]
+  const hasMore = supportFilled > 0 || loanFilled > 0
 
   return (
     <div className="relative shrink-0" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">
         <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#F1F3F6" strokeWidth={thickness} />
-        {loanFilled > 0 && (
-          <circle
-            cx={size / 2}
-            cy={size / 2}
-            r={r}
-            fill="none"
-            stroke="#60584C"
-            strokeWidth={thickness}
-            strokeDasharray={`${loanFilled} ${circumference - loanFilled}`}
-            strokeDashoffset={-filled}
-          />
+        {segments.map(
+          (seg) =>
+            seg.length > 0 && (
+              <circle
+                key={seg.color}
+                cx={size / 2}
+                cy={size / 2}
+                r={r}
+                fill="none"
+                stroke={seg.color}
+                strokeWidth={thickness}
+                strokeDasharray={`${seg.length} ${circumference - seg.length}`}
+                strokeDashoffset={-seg.offset}
+              />
+            ),
         )}
         <circle
           cx={size / 2}
@@ -151,11 +173,12 @@ function Donut({ value, loanValue = 0, size = 148, thickness = 20 }) {
           stroke="#FFBC00"
           strokeWidth={thickness}
           strokeDasharray={`${filled} ${circumference - filled}`}
-          strokeLinecap={loanFilled > 0 ? 'butt' : 'round'}
+          // 뒤에 이어질 조각이 있으면 끝을 둥글게 하지 않는다 (다음 조각을 덮는다)
+          strokeLinecap={hasMore ? 'butt' : 'round'}
         />
       </svg>
       <span className="absolute inset-0 flex items-center justify-center text-[22px] font-extrabold">
-        {Math.min(value + loanValue, 100)}%
+        {Math.min(value + supportValue + loanValue, 100)}%
       </span>
     </div>
   )
@@ -538,8 +561,10 @@ function TimelineCard({ forecast, income, mydata, fundingPlan, onGoForecast, onG
 
 /* ---------- 2행 2열 : 자금 현황 (세로 확장) ---------- */
 
-function FundStatusCard({ mydata, forecast, income, savingGoal, fundingPlan, onGoMydata, onGoForecast, onGoSavingPlan, onGoFunding }) {
-  const fund = buildFundStatus(mydata, forecast, fundingPlan?.amount)
+function FundStatusCard({ mydata, forecast, income, savingGoal, fundingPlan, policySupport, onGoMydata, onGoForecast, onGoSavingPlan, onGoFunding }) {
+  /* 지원금까지 넘긴다 — 자금조달 설계가 '필요 금액 − 자기자본 − 지원금' 으로 대출을
+     잡기 때문에, 여기서 지원금을 빼놓으면 두 화면이 정확히 지원금만큼 어긋난다 */
+  const fund = buildFundStatus(mydata, forecast, fundingPlan?.amount, policySupport)
   const capacity = forecast?.monthlySavingCapacity ?? savingCapacity(mydata, income)
 
   if (!fund) {
@@ -568,12 +593,25 @@ function FundStatusCard({ mydata, forecast, income, savingGoal, fundingPlan, onG
      아래 '마련한 금액 구성' 으로 내렸다. 옆에 %도 같이 적어 조각 크기와 바로 맞춰본다. */
   const legend = [
     { label: '내가 모은 돈', amount: fund.net, percent: fund.progress, dot: 'bg-kb-yellow' },
+    // 받을 수 있는 지원금이 있을 때만 줄이 생긴다
+    ...(fund.support > 0
+      ? [
+          {
+            label: '지원금으로 마련',
+            amount: fund.support,
+            percent: fund.supportShare,
+            dot: 'bg-kb-yellowDark',
+          },
+        ]
+      : []),
     // 대출을 골랐을 때만 줄이 생긴다. 늘 0원으로 띄우면 '받으라' 는 권유처럼 읽힌다
     ...(fund.loan > 0
       ? [{ label: '대출로 마련', amount: fund.loan, percent: fund.loanShare, dot: 'bg-kb-brown' }]
       : []),
     {
-      label: '앞으로 모아야 할 금액',
+      /* 지원금을 아직 확인하지 않았으면 그 사실을 이름에 적는다.
+         '앞으로 모아야 할 금액' 이라고만 하면 지원금이 없다고 확정한 값처럼 읽힌다 */
+      label: fund.supportKnown ? '앞으로 모아야 할 금액' : '지원금 빼기 전 모아야 할 금액',
       amount: fund.remaining,
       percent: Math.max(100 - fund.progressWithLoan, 0),
       // 도넛의 빈 자리와 같은 색(#F1F3F6). 너무 옅어서 테두리를 둘러야 점이 보인다
@@ -583,9 +621,20 @@ function FundStatusCard({ mydata, forecast, income, savingGoal, fundingPlan, onG
 
   return (
     <Card title="자금 현황" hint={FUND_HINT}>
-      {/* 도넛 + 범례 */}
+      {/* 도넛 + 범례
+
+          도넛을 148 → 128 로 줄인 이유 — 지원금이 생기면서 범례가 한 줄,
+          아래 '마련한 금액 구성' 이 한 줄 늘었다. 카드 높이는 그대로라
+          맨 아래 합계 블록이 통째로 잘려 나갔다(카드가 overflow-hidden 이라 조용히 사라진다).
+          범례 4줄은 108px 라 도넛을 줄여도 이 줄이 높이를 정하지 않는다. */}
       <div className="shrink-0 flex items-center gap-4">
-        <Donut value={fund.progress} loanValue={fund.loanShare} />
+        <Donut
+          value={fund.progress}
+          supportValue={fund.supportShare}
+          loanValue={fund.loanShare}
+          size={128}
+          thickness={18}
+        />
         <ul className="flex-1 min-w-0 space-y-3">
           {legend.map((item) => (
             <li key={item.label} className="flex items-center justify-between gap-2">
@@ -621,7 +670,7 @@ function FundStatusCard({ mydata, forecast, income, savingGoal, fundingPlan, onG
         </div>
 
         {/* 2열 배치 — 세로로 쌓으면 카드가 길어짐 */}
-        <ul className="shrink-0 mt-3 grid grid-cols-2 gap-x-4 gap-y-2.5">
+        <ul className="shrink-0 mt-2.5 grid grid-cols-2 gap-x-4 gap-y-2">
           {fund.breakdown.map((item) => (
             <li key={item.label} className="flex items-center justify-between gap-1.5 min-w-0">
               <span className="flex items-center gap-1.5 text-[11px] text-ink-500 min-w-0">
@@ -637,7 +686,7 @@ function FundStatusCard({ mydata, forecast, income, savingGoal, fundingPlan, onG
 
         {/* 막대는 음수를 그릴 수 없어서 빼는 줄은 글로 적는다.
             이게 없으면 위 합계(2,427만원)와 도넛 기준 금액(927만원)이 왜 다른지 알 수 없다 */}
-        <ul className="shrink-0 mt-3 pt-2.5 border-t border-line space-y-1.5">
+        <ul className="shrink-0 mt-2.5 pt-2 border-t border-line space-y-1">
           <li className="flex items-center justify-between gap-2 text-[11px]">
             <span className="text-ink-500 truncate">합계</span>
             <span className="font-bold shrink-0 whitespace-nowrap">{won(fund.sourceTotal)}</span>
@@ -658,7 +707,7 @@ function FundStatusCard({ mydata, forecast, income, savingGoal, fundingPlan, onG
       </div>
 
       {/* 월 저축 */}
-      <div className="shrink-0 mt-3 rounded-xl bg-kb-yellowBg border border-kb-yellowSoft p-4">
+      <div className="shrink-0 mt-2.5 rounded-xl bg-kb-yellowBg border border-kb-yellowSoft p-3.5">
         <div className="flex items-start justify-between gap-2">
           <div>
             <p className="text-[12px] text-ink-500">월 저축 목표</p>
@@ -871,9 +920,6 @@ function CoachBanner({ mydata, income, forecast, regionOptions }) {
     regionOptions?.candidates?.[0] ??
     null
 
-  // AI 코치 대화는 아직 없는 기능이라, 눌리면 상태만 알려준다
-  const [toast, showToast] = useComingSoon()
-
   const spending = totalSpending(mydata)
   const capacity = forecast?.monthlySavingCapacity ?? savingCapacity(mydata, income)
   const months = forecast?.estimatedMonths
@@ -991,16 +1037,9 @@ function CoachBanner({ mydata, income, forecast, regionOptions }) {
             )}
           </p>
 
-          {/* 원본 시안 기준 : 흰 버튼 + 우측 정렬.
-              paddingRight 숫자를 키우면 버튼이 왼쪽으로 이동 (단위 px) */}
-          <div className="mt-2 flex justify-end" style={{ paddingRight: 92 }}>
-            <GhostButton
-              onClick={() => showToast('AI 코치 대화는 준비 중이에요.')}
-              className="h-9 px-4 whitespace-nowrap"
-            >
-              AI 코치에게 질문하기
-            </GhostButton>
-          </div>
+          {/* 'AI 코치에게 질문하기' 버튼을 뺐다 — 누르면 "준비 중이에요" 토스트만 떴다.
+              이 카드는 계산 결과를 요약해 보여주는 자리고, 실제 AI 조언은
+              저축 플랜·자금조달·정책 화면에서 각 맥락에 맞게 받을 수 있다. */}
         </div>
 
         <div className="col-span-12 lg:col-span-7 grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -1018,7 +1057,6 @@ function CoachBanner({ mydata, income, forecast, regionOptions }) {
           ))}
         </div>
       </div>
-      {toast}
     </div>
   )
 }
@@ -1033,7 +1071,8 @@ export default function Home({ onNavigate, onLogout }) {
 
   // 서버 응답(me)이 오면 그 이름, 아직이면 로그인 응답의 이름
   const userName = appData.me?.name ?? getUser()?.name ?? '고객'
-  const { mydata, forecast: rawForecast, monthlyIncome, analyzedAt, savingGoal } = appData
+  const { mydata, forecast: rawForecast, monthlyIncome, analyzedAt, savingGoal, policySupport } =
+    appData
 
   /* 월 저축 목표를 정했으면 그 금액 기준으로 시점을 다시 계산한다.
      서버 값은 '저축 여력 전부' 기준이라, 목표를 정해도 홈이 안 바뀌면
@@ -1095,8 +1134,13 @@ export default function Home({ onNavigate, onLogout }) {
         {/* 3열 그리드 — 남는 세로 공간 전부 차지 */}
         {/* 카드 3열이 같은 높이를 쓰는데, 오른쪽 열만 위아래 두 장(인사이트 + 체크리스트)이라
             여기가 제일 빡빡하다. 최소 높이가 모자라면 인사이트의 절약 팁 3번째 줄이 잘렸다.
-            main 이 xl:overflow-y-auto 라서 넘치면 페이지가 스크롤된다 — 높이를 키워도 안전함 */}
-        <div className="flex-1 xl:min-h-[510px] grid grid-cols-12 gap-4">
+            main 이 xl:overflow-y-auto 라서 넘치면 페이지가 스크롤된다 — 높이를 키워도 안전함
+
+            510 → 600 으로 올림. 자금 현황 카드에 지원금 줄이 생기면서 필요한 높이가
+            565~590px 가 됐는데, 510 에서는 안쪽 블록이 눌리면서 '= 실제로 쓸 수 있는 돈'
+            줄 위로 월 저축 박스가 겹쳐 보였다. 카드 본문은 overflow-hidden 이라 카드 밖으로는
+            안 나가지만, 카드 안에서는 형제 요소를 덮는다. 높이가 근본 원인이다. */}
+        <div className="flex-1 xl:min-h-[600px] grid grid-cols-12 gap-4">
           {/* 1열 : 자금 현황 (아래 칸까지 확장) */}
           <div
             className="kb-fade-up col-span-12 md:col-span-6 xl:col-span-4 min-h-0"
@@ -1109,6 +1153,7 @@ export default function Home({ onNavigate, onLogout }) {
                 forecast={forecast}
                 income={monthlyIncome}
                 savingGoal={savingGoal}
+                policySupport={policySupport}
                 onGoMydata={goMydata}
                 onGoForecast={goForecast}
                 onGoSavingPlan={goSavingPlan}

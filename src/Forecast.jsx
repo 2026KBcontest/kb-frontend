@@ -678,20 +678,23 @@ export default function Forecast({ onNext, onBack, onGoMydata }) {
                       const isAi = p.source === 'ai'
 
                       return (
+                        /* 세 칸의 테두리·배경을 똑같이 둔다.
+                           예전에는 AI 칸에만 진한 테두리와 노란 배경을 줬는데, 그러면 읽기도 전에
+                           AI 쪽이 더 나은 답처럼 보인다. 셋은 우열이 아니라 축이 다른 답이고
+                           (①돈 ②③생활 여건), 고르는 건 사용자다.
+                           출처는 오른쪽 배지 하나로만 구분한다. */
                         <li
                           key={p.kind}
-                          className={`flex flex-col rounded-xl border px-5 py-5 ${
-                            isAi ? 'border-kb-brownDark bg-kb-yellowBg' : 'border-line bg-white'
-                          }`}
+                          className="flex flex-col rounded-xl border border-line bg-white px-5 py-5"
                         >
                           {/* 칸 이름 + 출처. 계산으로 고른 걸 AI 가 고른 것처럼 보이게 하지 않는다 */}
                           <div className="flex items-center justify-between gap-2">
                             <p className="text-[12px] font-bold text-ink-500">{p.label}</p>
+                            {/* 배지는 둘 다 같은 무게(테두리형)로 두고 색으로만 구분한다.
+                                한쪽만 채워두면 그게 더 중요한 답처럼 읽힌다. */}
                             <span
-                              className={`shrink-0 h-[21px] px-2 rounded-full text-[11px] font-bold grid place-items-center ${
-                                isAi
-                                  ? 'bg-kb-brownDark text-white'
-                                  : 'bg-white border border-kb-yellow text-kb-brownDark'
+                              className={`shrink-0 h-[21px] px-2 rounded-full bg-white border text-[11px] font-bold grid place-items-center text-kb-brownDark ${
+                                isAi ? 'border-kb-brownDark' : 'border-kb-yellow'
                               }`}
                             >
                               {isAi ? 'AI 분석' : '계산 기반'}

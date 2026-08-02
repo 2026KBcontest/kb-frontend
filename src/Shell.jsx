@@ -200,20 +200,6 @@ export function IconBox({ size = 20, src, round = 'rounded-md', tone = 'light', 
   )
 }
 
-// 흰색 보조 버튼 (사이드바 카드 안에서 사용)
-function GhostButton({ children, className = '', onClick }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-lg border border-line bg-white hover:bg-gray-50 text-[13px] font-semibold text-ink-700 ${className}`}
-    >
-      {children}
-    </button>
-  )
-}
-
-
 /* ---------- 사이드바 ---------- */
 
 /* 사이드바 아래쪽 '최근 접속 정보'.
@@ -320,15 +306,14 @@ export function Sidebar({ active = '홈', onNavigate }) {
         </p>
         {/* ★ 아이콘 : AI 코치 캐릭터 — public/assets/ai_coach.png
             가로가 긴 그림(3:2)이라 높이 기준으로 맞춤. 카드 안쪽 폭(152px)을 넘지 않음 */}
-        <div className="h-[96px] my-3 flex items-center justify-center">
+        {/* 'AI 상담하기' 버튼을 뺐다.
+            누르면 "준비 중이에요" 토스트만 뜨는 자리였다. AI 조언은 저축 플랜·자금조달·
+            정책·지역 추천 네 화면에서 각자의 맥락을 가지고 이미 동작한다.
+            맥락 없는 범용 상담 버튼을 남겨두면, 되지도 않으면서 그 네 곳의 성격까지
+            '그냥 챗봇' 으로 흐려놓는다. 안 되는 걸 두는 것보다 없는 게 낫다. */}
+        <div className="h-[96px] mt-3 flex items-center justify-center">
           <img src="/assets/ai_coach.png" alt="" className="h-[96px] w-auto object-contain" />
         </div>
-        <GhostButton
-          className="w-full h-9"
-          onClick={() => showToast('AI 상담 기능은 준비 중이에요.')}
-        >
-          AI 상담하기
-        </GhostButton>
       </div>
 
       {/* 남는 세로 공간 — 최근 접속 정보를 아래로 밀어줌 */}
